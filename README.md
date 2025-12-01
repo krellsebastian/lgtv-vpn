@@ -33,3 +33,7 @@ The app expects your OpenVPN profiles to live in `/media/developer/apps/usr/palm
 - An LG TV with webOS that has the Homebrew Channel installed and running.
 - Valid OpenVPN configuration files that work with your VPN provider.
 - Developer mode enabled if you plan to sideload the app via `ares-install`.
+
+## Stability and troubleshooting
+- The app is still experimental and may not be fully stable yet. If it becomes unresponsive, restart the TV with QuickStart disabled.
+- You can terminate any leftover OpenVPN processes through the root shell on the TV if a restart is not possible.
