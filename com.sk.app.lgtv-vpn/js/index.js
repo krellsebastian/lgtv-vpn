@@ -34,19 +34,23 @@ function setButtonLabel(state) {
   btn.innerText = state === "CONNECTED" ? "Stop" : "Connect";
 }
 function focusFirstEnabledItem() {
-  const enabledItem = Array.from(document.getElementsByClassName('item'))
-    .find(el => !el.disabled);
-
-  if (enabledItem && document.activeElement?.disabled) {
-    enabledItem.focus();
+  for (el of document.getElementsByClassName('item')) {
+    if(!el.disabled) {
+      el.focus();
+      return;
+    } 
   }
 }
-function setButtonDisabled(dis) { document.getElementById('cbtn').disabled = dis;
+
+function setButtonDisabled(dis) { 
+  document.getElementById('cbtn').disabled = dis;
   SpatialNavigation.makeFocusable();
-  focusFirstEnabledItem();}
+  focusFirstEnabledItem();
+}
 function setDropdownDisabled(dis) { document.getElementById('configDropdown').disabled = dis;
   SpatialNavigation.makeFocusable();
-  focusFirstEnabledItem();}
+  focusFirstEnabledItem();
+}
 
 function updateStateLabel(text, cls = null) {
   const s = document.getElementById('state');
@@ -54,13 +58,14 @@ function updateStateLabel(text, cls = null) {
   if (cls) s.classList.add(cls);
   s.innerText = text;
 }
-function setDebug(msg) { document.getElementById('debugInfo').innerText = msg; }
+
+function setDebug(msg) { document.getElementById('debugInfo').innerText = "DebugMsg:\n"+msg; }
 function extendDebug(msg) { document.getElementById('debugInfo').innerText = document.getElementById('debugInfo').innerText + "\n" + msg; }
 function showError(msg) { document.getElementById('errorMsg').innerText = msg; }
 
 async function terminateDaemon() {
   try {
-    await lunaCall('luna://org.webosbrew.hbchannel.service/exec', { command: `{ echo "signal SIGTERM"; sleep 1s; echo "exit";} | nc 127.0.0.1 ${mgmtPort}` });
+    await lunaCall('luna://org.webosbrew.hbchannel.service/exec', { command: `{ echo "signal SIGTERM"; sleep 1s; echo "exit";} | nc 127.0.0.1 ${mgmtPort}` },timeout=15000);
   } catch (e) {
     extendDebug(`Cleanup stop failed: ${e.message}`);
   }
@@ -68,7 +73,7 @@ async function terminateDaemon() {
 
 async function getState(retries = 3, canfail = false) {
   try {
-    updateStateLabel('Checking...');
+    updateStateLabel('Checking...', "connecting");
     showError("");
     const r = await lunaCall('luna://org.webosbrew.hbchannel.service/exec', { command: `{ echo "state"; sleep 1s; echo "exit";} | nc 127.0.0.1 ${mgmtPort}` });
     const out = r.stdoutString || '';
@@ -176,12 +181,13 @@ async function disconnect() {
   showError('');
   setButtonDisabled(true);
   setDropdownDisabled(true);
-  setDebug('Sending SIGTERM...');
+  setDebug('Stopping VPN Connection...');
   try {
     await terminateDaemon();
-    setTimeout(() => {
+    setTimeout(async() => {
       console.log('state from disconnect');
-      getState(1, true);
+      await getState(1, true);
+      setDebug('VPN Stopped.');
     }, 2000);
   } catch (e) {
     showError('Stop failed ' + e.message); setButtonDisabled(false);
@@ -191,37 +197,17 @@ async function disconnect() {
 function btnClick() { curState === 'CONNECTED' ? disconnect() : connect(); }
 
 async function initVPN() {
-  extendDebug('Preparing openvpn binary...');
-  await lunaCall('luna://org.webosbrew.hbchannel.service/exec', {
-    command: 'chmod +x /media/developer/apps/usr/palm/applications/com.sk.app.lgtv-vpn/res/openvpn'
-  });
+  setDebug('Preparing openvpn binary...');
+  try {
+    await lunaCall('luna://org.webosbrew.hbchannel.service/exec', {
+      command: 'chmod +x /media/developer/apps/usr/palm/applications/com.sk.app.lgtv-vpn/res/openvpn'
+    });
+  } catch (e) {
+    extendDebug(`Failed to set executable flag: ${e.message}`);
+  }
   extendDebug('Checking management interface…');
   console.log('state from initVPN');
   await getState(1, true);
-  extendDebug('Initialization complete.');
-  setDropdownDisabled(false);
-  setButtonDisabled(false);
-}
-
-function configureVisibilityHandling() {
-  if (visibilityEvent) return;
-  if (typeof document.hidden !== 'undefined') {
-    visibilityProp = 'hidden';
-    visibilityEvent = 'visibilitychange';
-  } else if (typeof document.webkitHidden !== 'undefined') {
-    visibilityProp = 'webkitHidden';
-    visibilityEvent = 'webkitvisibilitychange';
-  }
-
-  if (!visibilityEvent) return;
-
-  document.addEventListener(visibilityEvent, () => {
-    const isHidden = document[visibilityProp];
-    if (!isHidden) {
-      console.log('state from Hiddenlistener');
-      getState(1, true);
-    }
-  }, true);
 }
 
 function launchEvent() {
@@ -230,9 +216,15 @@ function launchEvent() {
   SpatialNavigation.makeFocusable();
   eventRegister.add();
   document.getElementById('cbtn').addEventListener('click', btnClick);
-  configureVisibilityHandling();
-  setDebug('Loading Profiles, this could take some seconds...');
-  loadProfiles().then(() => { initVPN(); },()=>{setDebug('Failed to load profiles.');});
+  initVPN().then(() => {
+    extendDebug('Loading Profiles, this could take some seconds...');
+    loadProfiles().then(()=>{
+      extendDebug("Initialization complete.")
+    },
+    ()=>{
+      extendDebug('Failed to load profiles.');
+    });
+  });
 }
 
 
